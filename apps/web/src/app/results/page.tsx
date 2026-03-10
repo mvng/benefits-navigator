@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useQuizStore } from '@/store/quiz-store';
+import { DEMO_MODE, DEMO_RESULTS } from '@/lib/demo-data';
 
 type ResultCard = {
   slug: string;
@@ -15,7 +16,6 @@ type ResultCard = {
   disqualifiers: Array<{ factor: string; detail: string }>;
 };
 
-// Mock results for UI — wire to /api/v1/eligibility/sessions/:id/calculate
 function mockResults(answers: Record<string, unknown>): ResultCard[] {
   const income = Number(answers.monthly_income ?? 0);
   const size = Number(answers.household_size ?? 1);
@@ -52,6 +52,36 @@ function mockResults(answers: Record<string, unknown>): ResultCard[] {
       requiredDocs: ['Proof of pregnancy or child age', 'Income verification'],
       disqualifiers: [],
     },
+    {
+      slug: 'calworks',
+      name: 'CalWORKs',
+      isEligible: income < 1800 * size && Boolean(answers.has_children === 'yes'),
+      confidence: 0.7,
+      estimatedMin: 500,
+      estimatedMax: 1200,
+      requiredDocs: ['Government ID', 'Proof of income', 'Proof of child custody'],
+      disqualifiers: income >= 1800 * size ? [{ factor: 'Income', detail: 'Household income exceeds the CalWORKs threshold.' }] : [],
+    },
+    {
+      slug: 'liheap',
+      name: 'Utility Help (LIHEAP)',
+      isEligible: income < 3000 * size,
+      confidence: 0.75,
+      estimatedMin: 100,
+      estimatedMax: 400,
+      requiredDocs: ['Utility bill', 'Proof of income', 'Government ID'],
+      disqualifiers: [],
+    },
+    {
+      slug: 'section-8',
+      name: 'Section 8 / Housing Voucher',
+      isEligible: false,
+      confidence: 0.5,
+      estimatedMin: undefined,
+      estimatedMax: undefined,
+      requiredDocs: [],
+      disqualifiers: [{ factor: 'Waitlist', detail: 'San Diego waitlist is currently closed to new applicants.' }],
+    },
   ];
 }
 
@@ -60,7 +90,7 @@ export default function ResultsPage() {
   const [results, setResults] = useState<ResultCard[]>([]);
 
   useEffect(() => {
-    setResults(mockResults(answers));
+    setResults(DEMO_MODE ? DEMO_RESULTS : mockResults(answers));
   }, [answers]);
 
   const eligible = results.filter((r) => r.isEligible);
@@ -136,6 +166,16 @@ function EligibilityCard({ result, variant }: { result: ResultCard; variant: 'el
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {!isEligible && result.disqualifiers.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {result.disqualifiers.map((d) => (
+            <p key={d.factor} className="text-sm text-gray-500">
+              <span className="font-medium text-gray-700">{d.factor}:</span> {d.detail}
+            </p>
+          ))}
         </div>
       )}
 

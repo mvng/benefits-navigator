@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { DEMO_MODE, getNextDemoResponse } from '@/lib/demo-data';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
@@ -27,6 +28,15 @@ export default function ChatPage() {
     setMessages((m) => [...m, userMsg]);
     setInput('');
     setIsLoading(true);
+
+    if (DEMO_MODE) {
+      // Simulate a short streaming delay without hitting the API
+      await new Promise((r) => setTimeout(r, 700));
+      const demoReply = getNextDemoResponse();
+      setMessages((m) => [...m, { role: 'assistant', content: demoReply }]);
+      setIsLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch('/api/v1/assistant/chat', {
@@ -65,7 +75,7 @@ export default function ChatPage() {
   };
 
   return (
-    <main className="mx-auto flex h-screen max-w-2xl flex-col px-4 py-6">
+    <main className="mx-auto flex h-[calc(100vh-90px)] max-w-2xl flex-col px-4 py-6">
       <h1 className="mb-4 text-xl font-bold">Benefits Assistant</h1>
 
       {messages.length === 0 && (
@@ -121,7 +131,7 @@ export default function ChatPage() {
           className="btn-primary px-5"
           aria-label="Send message"
         >
-          Send
+          {isLoading ? '…' : 'Send'}
         </button>
       </form>
     </main>

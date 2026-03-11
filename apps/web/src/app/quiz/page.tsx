@@ -15,7 +15,7 @@ const questions = [
   },
   {
     key: 'monthly_income',
-    label: 'What is your household\'s total monthly income before taxes?',
+    label: "What is your household's total monthly income before taxes?",
     hint: 'Include wages, benefits, child support, and any other income.',
     type: 'number',
     prefix: '$',
@@ -49,27 +49,20 @@ const questions = [
     label: 'Is at least one person in your household a US citizen or legal resident?',
     type: 'yesno',
   },
-  {
-    key: 'state',
-    label: 'What state do you live in?',
-    type: 'choice',
-    options: [
-      { value: 'CA', label: 'California' },
-    ],
-    defaultValue: 'CA',
-    hidden: true,
-  },
 ];
 
 export default function QuizPage() {
   const router = useRouter();
-  const { answers, setAnswer, currentStep, nextStep, prevStep } = useQuizStore();
+  const { answers = {}, setAnswer, currentStep, nextStep, prevStep } = useQuizStore();
   const [localValue, setLocalValue] = useState<string>('');
 
-  const visibleQuestions = questions.filter((q) => !q.hidden);
-  const question = visibleQuestions[currentStep];
-  const isLastStep = currentStep === visibleQuestions.length - 1;
-  const progress = Math.round(((currentStep + 1) / visibleQuestions.length) * 100);
+  const safeAnswers = answers ?? {};
+  const question = questions[currentStep];
+  const isLastStep = currentStep === questions.length - 1;
+  const progress = Math.round(((currentStep + 1) / questions.length) * 100);
+
+  const currentAnswer = safeAnswers[question?.key ?? ''];
+  const canContinue = localValue !== '' || currentAnswer !== undefined;
 
   const handleNext = () => {
     if (localValue !== '') setAnswer(question.key, localValue);
@@ -81,12 +74,14 @@ export default function QuizPage() {
     }
   };
 
+  if (!question) return null;
+
   return (
     <main className="mx-auto max-w-lg px-4 py-12">
       {/* Progress */}
       <div className="mb-8">
         <div className="mb-2 flex items-center justify-between text-sm text-gray-500">
-          <span>Question {currentStep + 1} of {visibleQuestions.length}</span>
+          <span>Question {currentStep + 1} of {questions.length}</span>
           <span>{progress}% complete</span>
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
@@ -177,7 +172,7 @@ export default function QuizPage() {
         )}
         <button
           onClick={handleNext}
-          disabled={!localValue && !answers[question.key]}
+          disabled={!canContinue}
           className="btn-primary flex-1"
         >
           {isLastStep ? 'See My Results →' : 'Continue →'}

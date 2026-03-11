@@ -1,5 +1,5 @@
 // Set to true to run the app without a backend (uses mock data)
-export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' || true;
+export const DEMO_MODE = true;
 
 export const DEMO_PROGRAMS = [
   {
@@ -85,70 +85,80 @@ export const INCOME_THRESHOLDS: Record<string, Record<number, { min: number; max
   },
 };
 
+// 130% FPL monthly gross limits (2026)
+const CALFRESH_LIMITS: Record<number, number> = {
+  1: 1760, 2: 2385, 3: 3011, 4: 3637,
+  5: 4263, 6: 4889, 7: 5515, 8: 6141,
+};
+
+// 138% FPL for Medi-Cal
+const MEDICAL_LIMITS: Record<number, number> = {
+  1: 1868, 2: 2530, 3: 3193, 4: 3856,
+  5: 4519, 6: 5182, 7: 5845, 8: 6508,
+};
+
 export function calcEligibility(answers: Record<string, unknown>) {
-  const income = Number(answers.monthly_income ?? 0);
-  const size   = Math.min(Number(answers.household_size ?? 1), 8);
+  const income      = Number(answers.monthly_income ?? 0);
+  const size        = Math.min(Number(answers.household_size ?? 1), 8);
   const hasCitizen  = answers.has_us_citizen === 'yes';
   const isPregnant  = answers.is_pregnant === 'yes';
   const hasChildren = answers.has_children === 'yes';
-
-  // 130% FPL monthly gross limits (2026)
-  const calfreshLimits: Record<number, number> = {
-    1: 1760, 2: 2385, 3: 3011, 4: 3637,
-    5: 4263, 6: 4889, 7: 5515, 8: 6141,
-  };
-  // 138% FPL for Medi-Cal
-  const medicalLimits: Record<number, number> = {
-    1: 1868, 2: 2530, 3: 3193, 4: 3856,
-    5: 4519, 6: 5182, 7: 5845, 8: 6508,
-  };
 
   return DEMO_PROGRAMS.map((p) => {
     let isEligible = false;
     let estimatedMin: number | undefined;
     let estimatedMax: number | undefined;
     const requiredDocs: string[] = [];
-    const disqualifiers: Array<{ detail: string }> = [];
+    const disqualifiers: Array<{ factor: string; detail: string }> = [];
 
     if (p.slug === 'calfresh') {
-      isEligible = income <= (calfreshLimits[size] ?? 6141) && hasCitizen;
-      if (!hasCitizen) disqualifiers.push({ detail: 'Must have at least one US citizen or legal resident in household.' });
+      isEligible = income <= (CALFRESH_LIMITS[size] ?? 6141) && hasCitizen;
+      if (!hasCitizen)
+        disqualifiers.push({ factor: 'Citizenship', detail: 'Must have at least one US citizen or legal resident in household.' });
       const est = INCOME_THRESHOLDS.calfresh[size];
       if (est) { estimatedMin = est.min; estimatedMax = est.max; }
       requiredDocs.push('Government-issued ID', 'Proof of income', 'Proof of address');
     }
 
     if (p.slug === 'medi-cal') {
-      isEligible = income <= (medicalLimits[size] ?? 6508);
+      isEligible = income <= (MEDICAL_LIMITS[size] ?? 6508);
       requiredDocs.push('Government-issued ID', 'Proof of income');
     }
 
     if (p.slug === 'wic') {
-      isEligible = (isPregnant || hasChildren) && income <= (calfreshLimits[size] ?? 6141);
+      isEligible = (isPregnant || hasChildren) && income <= (CALFRESH_LIMITS[size] ?? 6141);
+      if (!isPregnant && !hasChildren)
+        disqualifiers.push({ factor: 'Eligibility', detail: 'WIC is for pregnant women and households with children under 5.' });
       estimatedMin = 50; estimatedMax = 150;
-      requiredDocs.push('Proof of pregnancy or child age', 'Income verification', 'Residency proof');
+      requiredDocs.push('Proof of pregnancy or child age', 'Income verification', 'Proof of residency');
     }
 
     if (p.slug === 'calworks') {
       isEligible = hasChildren && income <= 1500 * size;
+      if (!hasChildren)
+        disqualifiers.push({ factor: 'Children', detail: 'CalWORKs requires a child under 18 in the household.' });
+      if (income > 1500 * size)
+        disqualifiers.push({ factor: 'Income', detail: 'Household income exceeds the CalWORKs threshold.' });
       estimatedMin = 300; estimatedMax = 900;
-      requiredDocs.push('Birth certificates for children', 'Proof of income', 'ID');
+      requiredDocs.push('Birth certificates for children', 'Proof of income', 'Government-issued ID');
     }
 
     if (p.slug === 'liheap') {
-      isEligible = income <= (calfreshLimits[size] ?? 6141);
+      isEligible = income <= (CALFRESH_LIMITS[size] ?? 6141);
       estimatedMin = 100; estimatedMax = 400;
-      requiredDocs.push('Utility bill', 'Proof of income', 'ID');
+      requiredDocs.push('Most recent utility bill', 'Proof of income', 'Government-issued ID');
     }
 
     if (p.slug === 'section-8') {
-      // Section 8 is generally 50% AMI — simplified check
       isEligible = income <= 2500 * size * 0.5;
+      disqualifiers.push({ factor: 'Waitlist', detail: 'San Diego waitlist is currently closed to new applicants.' });
+      isEligible = false; // waitlist closed
       requiredDocs.push('ID for all household members', 'Proof of income', 'Rental history');
     }
 
     return {
-      ...p,
+      slug: p.slug,
+      name: p.name,
       isEligible,
       confidence: isEligible ? 0.88 : 0.2,
       estimatedMin,
@@ -158,3 +168,13 @@ export function calcEligibility(answers: Record<string, unknown>) {
     };
   });
 }
+
+// Static demo results for when no quiz answers exist (e.g. direct page visit)
+export const DEMO_RESULTS = calcEligibility({
+  household_size: '2',
+  monthly_income: '1800',
+  has_us_citizen: 'yes',
+  is_pregnant: 'no',
+  has_children: 'no',
+  employment_status: 'employed_part',
+});
